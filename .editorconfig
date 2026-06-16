@@ -1,4 +1,7 @@
-root = true
+# Normalize line endings for all files that Git considers text files.
+* text=auto eol=lf
 
-[*]
-charset = utf-8
+# Only include the addons folder when downloading from the Asset Library.
+/**        export-ignore
+/addons    !export-ignore
+/addons/** !export-ignore
