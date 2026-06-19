@@ -2,11 +2,12 @@
 @icon("res://addons/AppodealNative/icon.png")
 extends Node
 class_name AppodealAds
+@export var app_key:String = "your appodeal app key here.."
+@export var is_testing : bool = false
+@export var auto_cache : bool = true
 
 signal initialization_finished(success: bool, error_message: String)
-@export var testing = true;
-@export var auto_cache = true;
-@export var  app_key :String = "your appodeal key here";
+
 signal banner_loaded(height: int, is_precache: bool)
 signal banner_failed_to_load
 signal banner_shown
@@ -45,7 +46,8 @@ signal native_position_updated(x: int, y: int, width: int, height: int)
 var plugin: Object = null
 var initialized := false
 
-var _native_target: Control = null
+var _native_slots := {}
+var _active_native_slot: String = ""
 var _native_visible := false
 var _last_native_rect := Rect2i()
 
@@ -72,9 +74,30 @@ func init() -> void:
 	plugin = Engine.get_singleton("AppodealNative")
 	_connect_plugin_signals()
 
-	plugin.initialize(app_key, testing, auto_cache)
+	start_appodeal_with_consent()
+
+func start_appodeal_with_consent() -> void:
+	plugin.consent_info_updated.connect(_on_consent_info_updated)
+	plugin.consent_form_dismissed.connect(_on_consent_form_dismissed)
+
+	plugin.request_consent_info_update(app_key, false)
 
 
+func _on_consent_info_updated(success: bool, message: String) -> void:
+	print("Consent info updated: ", success, " / ", message)
+
+	if not success:
+		push_warning("Consent info update failed. Check AdMob Privacy & Messaging setup.")
+		return
+
+	plugin.load_and_show_consent_form_if_required()
+
+
+func _on_consent_form_dismissed(success: bool, message: String) -> void:
+	print("Consent form dismissed: ", success, " / ", message)
+
+	# Now initialize ads.
+	plugin.initialize(app_key, is_testing, auto_cache)
 func _connect_plugin_signals() -> void:
 	_connect_plugin_signal("initialization_finished", Callable(self, "_on_plugin_initialization_finished"))
 
@@ -177,27 +200,6 @@ func show_rewarded(placement: String = "") -> void:
 		plugin.show_rewarded(placement)
 
 
-func show_native_on_control(control: Control) -> void:
-	if plugin == null:
-		return
-
-	_native_target = control
-	_native_visible = true
-	set_process(true)
-
-	await get_tree().process_frame
-	_sync_native_position(true)
-
-
-func hide_native() -> void:
-	_native_visible = false
-	_native_target = null
-	_last_native_rect = Rect2i()
-
-	if plugin:
-		plugin.hide_native()
-
-	_update_processing_state()
 
 
 func show_banner_on_control(control: Control) -> void:
@@ -225,11 +227,16 @@ func hide_banner() -> void:
 
 func _process(_delta: float) -> void:
 	if _native_visible:
-		if not is_instance_valid(_native_target) or not _native_target.is_visible_in_tree():
+		if not _native_slots.has(_active_native_slot):
 			hide_native()
 		else:
-			_sync_native_position(false)
+			var data: Dictionary = _native_slots[_active_native_slot]
+			var control: Control = data.get("control", null)
 
+			if not is_instance_valid(control) or not control.is_visible_in_tree():
+				hide_native()
+			else:
+				_sync_active_native_position(false)
 	if _banner_visible:
 		if not is_instance_valid(_banner_target) or not _banner_target.is_visible_in_tree():
 			hide_banner()
@@ -241,11 +248,21 @@ func _update_processing_state() -> void:
 	set_process(_native_visible or _banner_visible)
 
 
-func _sync_native_position(force_show: bool) -> void:
-	if plugin == null or not is_instance_valid(_native_target):
+func _sync_active_native_position(force_show: bool) -> void:
+	if plugin == null:
 		return
 
-	var rect := _control_to_screen_rect(_native_target)
+	if not _native_slots.has(_active_native_slot):
+		return
+
+	var data: Dictionary = _native_slots[_active_native_slot]
+	var control: Control = data.get("control", null)
+	var native_type: int = int(data.get("type", ads.NativeTemplate.NEWS_FEED))
+
+	if not is_instance_valid(control):
+		return
+
+	var rect := _control_to_screen_rect(control)
 
 	if rect.size.x <= 0 or rect.size.y <= 0:
 		return
@@ -256,10 +273,20 @@ func _sync_native_position(force_show: bool) -> void:
 	_last_native_rect = rect
 
 	if force_show:
-		plugin.show_native_at(rect.position.x, rect.position.y, rect.size.x, rect.size.y,2)
+		plugin.show_native_at(
+			rect.position.x,
+			rect.position.y,
+			rect.size.x,
+			rect.size.y,
+			native_type
+		)
 	else:
-		plugin.update_native_position(rect.position.x, rect.position.y, rect.size.x, rect.size.y)
-
+		plugin.update_native_position(
+			rect.position.x,
+			rect.position.y,
+			rect.size.x,
+			rect.size.y
+		)
 
 func _sync_banner_position(force_show: bool) -> void:
 	if plugin == null or not is_instance_valid(_banner_target):
@@ -435,3 +462,108 @@ func _on_plugin_native_hidden() -> void:
 
 func _on_plugin_native_position_updated(x: int, y: int, width: int, height: int) -> void:
 	emit_signal("native_position_updated", x, y, width, height)
+	
+	
+	
+func register_native_slot(slot_name: String, control: Control, native_type: int = ads.NativeTemplate.NEWS_FEED) -> bool:
+	if not is_instance_valid(control):
+		push_warning("Cannot register native slot. Control is invalid: " + slot_name)
+		return false
+
+	_cleanup_invalid_native_slots()
+
+	# If same slot already exists, check if it is the same target/type.
+	if _native_slots.has(slot_name):
+		var existing_data: Dictionary = _native_slots[slot_name]
+		var existing_control_variant = existing_data.get("control", null)
+		var existing_type: int = int(existing_data.get("type", ads.NativeTemplate.NEWS_FEED))
+
+		if existing_control_variant != null and is_instance_valid(existing_control_variant):
+			var existing_control := existing_control_variant as Control
+
+			if existing_control == control and existing_type == native_type:
+				return false
+		else:
+			_native_slots.erase(slot_name)
+
+	# Check if this target Control is already registered under another slot.
+	for existing_slot_name in _native_slots.keys():
+		var data: Dictionary = _native_slots[existing_slot_name]
+		var existing_control_variant = data.get("control", null)
+
+		if existing_control_variant == null:
+			continue
+
+		if not is_instance_valid(existing_control_variant):
+			_native_slots.erase(existing_slot_name)
+			continue
+
+		var existing_control := existing_control_variant as Control
+
+		if existing_control == control:
+			print("Native target already registered in slot: ", existing_slot_name)
+			return false
+
+	_native_slots[slot_name] = {
+		"control": control,
+		"type": native_type,
+	}
+
+	return true
+	
+func _cleanup_invalid_native_slots() -> void:
+	for slot_name in _native_slots.keys():
+		var data: Dictionary = _native_slots[slot_name]
+		var control_variant = data.get("control", null)
+
+		if control_variant == null or not is_instance_valid(control_variant):
+			if _active_native_slot == slot_name:
+				hide_native()
+
+			_native_slots.erase(slot_name)
+func unregister_native_slot(slot_name: String) -> void:
+	if _active_native_slot == slot_name:
+		hide_native()
+
+	_native_slots.erase(slot_name)
+
+
+func show_native_slot(slot_name: String) -> void:
+	if plugin == null:
+		return
+
+	if not _native_slots.has(slot_name):
+		push_warning("Native slot not found: " + slot_name)
+		return
+
+	var data: Dictionary = _native_slots[slot_name]
+	var control: Control = data.get("control", null)
+
+	if not is_instance_valid(control):
+		push_warning("Native slot control is invalid: " + slot_name)
+		return
+
+	_active_native_slot = slot_name
+	_native_visible = true
+	_last_native_rect = Rect2i()
+
+	set_process(true)
+
+	await get_tree().process_frame
+	_sync_active_native_position(true)
+
+
+func show_native_on_control(control: Control, native_type: int = ads.NativeTemplate.NEWS_FEED) -> void:
+	register_native_slot("__direct__", control, native_type)
+	show_native_slot("__direct__")
+
+
+func hide_native() -> void:
+	_native_visible = false
+	_active_native_slot = ""
+	_last_native_rect = Rect2i()
+
+	if plugin:
+		plugin.hide_native()
+
+	_update_processing_state()
