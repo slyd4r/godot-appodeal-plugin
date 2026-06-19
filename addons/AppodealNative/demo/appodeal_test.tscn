@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://c1vq2btf41igf"]
 
 [ext_resource type="Script" uid="uid://cx7dhgkspq18x" path="res://appodeal_test.gd" id="1_2p5ne"]
-[ext_resource type="Script" uid="uid://k3u8lgx0g8jf" path="res://addons/AppodealNative/AppodealAds.gd" id="2_emwhv"]
+[ext_resource type="Script" uid="uid://uy3x1tmoybpo" path="res://addons/AppodealNative/AppodealAds.gd" id="2_emwhv"]
 
 [node name="appodeal test" type="Control" unique_id=267967383]
 layout_mode = 3
@@ -15,7 +15,6 @@ script = ExtResource("1_2p5ne")
 [node name="AppodealAds" type="Node" parent="." unique_id=807842684]
 script = ExtResource("2_emwhv")
 app_key = "10402952f5c39e8d984e30f917d2437ea746e4c3ed38053c"
-metadata/_custom_type_script = "uid://k3u8lgx0g8jf"
 
 [node name="ScrollContainer" type="ScrollContainer" parent="." unique_id=1675598458]
 layout_mode = 1

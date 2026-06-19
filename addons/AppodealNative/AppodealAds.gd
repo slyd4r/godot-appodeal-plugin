@@ -1,10 +1,17 @@
 @tool
 @icon("res://addons/AppodealNative/icon.png")
 extends Node
+
 class_name AppodealAds
 @export var app_key:String = "your appodeal app key here.."
 @export var is_testing : bool = false
 @export var auto_cache : bool = true
+
+enum NativeTemplate {
+	NEWS_FEED = 0,
+	APP_WALL = 1,
+	CONTENT_STREAM = 2,
+}
 
 signal initialization_finished(success: bool, error_message: String)
 
@@ -87,10 +94,27 @@ func _on_consent_info_updated(success: bool, message: String) -> void:
 	print("Consent info updated: ", success, " / ", message)
 
 	if not success:
-		push_warning("Consent info update failed. Check AdMob Privacy & Messaging setup.")
+		push_warning("Consent info update failed: " + message)
+		# You can decide whether to initialize or block ads here.
+		# For strict compliance, fix the consent error first.
 		return
 
-	plugin.load_and_show_consent_form_if_required()
+	match message:
+		"NotRequired":
+			print("Consent not required. Initializing Appodeal.")
+			plugin.initialize(app_key, is_testing, auto_cache)
+
+		"Obtained":
+			print("Consent already obtained. Initializing Appodeal.")
+			plugin.initialize(app_key, is_testing, auto_cache)
+
+		"Required":
+			print("Consent required. Showing consent form.")
+			plugin.load_and_show_consent_form_if_required()
+
+		_:
+			print("Unknown consent status: ", message)
+			plugin.init(app_key, false, false)
 
 
 func _on_consent_form_dismissed(success: bool, message: String) -> void:
@@ -257,7 +281,7 @@ func _sync_active_native_position(force_show: bool) -> void:
 
 	var data: Dictionary = _native_slots[_active_native_slot]
 	var control: Control = data.get("control", null)
-	var native_type: int = int(data.get("type", ads.NativeTemplate.NEWS_FEED))
+	var native_type: int = int(data.get("type", NativeTemplate.NEWS_FEED))
 
 	if not is_instance_valid(control):
 		return
@@ -465,7 +489,7 @@ func _on_plugin_native_position_updated(x: int, y: int, width: int, height: int)
 	
 	
 	
-func register_native_slot(slot_name: String, control: Control, native_type: int = ads.NativeTemplate.NEWS_FEED) -> bool:
+func register_native_slot(slot_name: String, control: Control, native_type: int = NativeTemplate.NEWS_FEED) -> bool:
 	if not is_instance_valid(control):
 		push_warning("Cannot register native slot. Control is invalid: " + slot_name)
 		return false
@@ -476,7 +500,7 @@ func register_native_slot(slot_name: String, control: Control, native_type: int 
 	if _native_slots.has(slot_name):
 		var existing_data: Dictionary = _native_slots[slot_name]
 		var existing_control_variant = existing_data.get("control", null)
-		var existing_type: int = int(existing_data.get("type", ads.NativeTemplate.NEWS_FEED))
+		var existing_type: int = int(existing_data.get("type", NativeTemplate.NEWS_FEED))
 
 		if existing_control_variant != null and is_instance_valid(existing_control_variant):
 			var existing_control := existing_control_variant as Control
@@ -553,7 +577,7 @@ func show_native_slot(slot_name: String) -> void:
 	_sync_active_native_position(true)
 
 
-func show_native_on_control(control: Control, native_type: int = ads.NativeTemplate.NEWS_FEED) -> void:
+func show_native_on_control(control: Control, native_type: int = NativeTemplate.NEWS_FEED) -> void:
 	register_native_slot("__direct__", control, native_type)
 	show_native_slot("__direct__")
 
