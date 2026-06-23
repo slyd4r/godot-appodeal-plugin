@@ -6,6 +6,7 @@ class_name AppodealAds
 @export var app_key:String = "your appodeal app key here.."
 @export var is_testing : bool = false
 @export var auto_cache : bool = true
+@export var UMP_consent_debug_mode : bool = true
 
 var device_hashed_id = "442134D66BAFF9D612160C4228334C8"
 # use this to filter logcat and get device id after running the app once :adb logcat -v time | findstr /i "addTestDeviceHashedId ConsentDebugSettings UserMessagingPlatform UMP requestConsentInfoUpdate consent"
@@ -91,15 +92,17 @@ func start_appodeal_with_consent() -> void:
 	plugin.consent_flow_finished.connect(_on_consent_flow_finished)
 	
 	#for appodeal
-	#plugin.request_consent_info_update(app_key, false)
-	
-	#for admob_
-	plugin.request_ump_debug_consent_flow(
+	if UMP_consent_debug_mode:
+		plugin.request_ump_debug_consent_flow(
 			device_hashed_id,
 			false, #tagForUnderAgeOfConsent: Boolean,
 			true, #forceEea: Boolean,
 			true # reset , this clears the saved UMP consent state on that device, so the consent form can show again.
 		)
+	else:
+		plugin.request_consent_info_update(app_key, false)
+	#for admob_
+	
 
 func _on_consent_info_updated(success: bool, message: String) -> void:
 	print("Consent info updated: ", success, " / ", message)

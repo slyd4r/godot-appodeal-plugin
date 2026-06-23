@@ -15,6 +15,7 @@ script = ExtResource("1_2p5ne")
 [node name="AppodealAds" type="Node" parent="." unique_id=807842684]
 script = ExtResource("2_emwhv")
 app_key = "10402952f5c39e8d984e30f917d2437ea746e4c3ed38053c"
+UMP_consent_debug_mode = false
 
 [node name="ScrollContainer" type="ScrollContainer" parent="." unique_id=1675598458]
 layout_mode = 1
