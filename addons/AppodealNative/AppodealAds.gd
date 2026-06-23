@@ -7,6 +7,8 @@ class_name AppodealAds
 @export var is_testing : bool = false
 @export var auto_cache : bool = true
 
+var device_hashed_id = "442134D66BAFF9D612160C4228334C8"
+# use this to filter logcat and get device id after running the app once :adb logcat -v time | findstr /i "addTestDeviceHashedId ConsentDebugSettings UserMessagingPlatform UMP requestConsentInfoUpdate consent"
 enum NativeTemplate {
 	NEWS_FEED = 0,
 	APP_WALL = 1,
@@ -86,19 +88,28 @@ func init() -> void:
 func start_appodeal_with_consent() -> void:
 	plugin.consent_info_updated.connect(_on_consent_info_updated)
 	plugin.consent_form_dismissed.connect(_on_consent_form_dismissed)
-
-	plugin.request_consent_info_update(app_key, false)
-
+	plugin.consent_flow_finished.connect(_on_consent_flow_finished)
+	
+	#for appodeal
+	#plugin.request_consent_info_update(app_key, false)
+	
+	#for admob_
+	plugin.request_ump_debug_consent_flow(
+			device_hashed_id,
+			false, #tagForUnderAgeOfConsent: Boolean,
+			true, #forceEea: Boolean,
+			true # reset , this clears the saved UMP consent state on that device, so the consent form can show again.
+		)
 
 func _on_consent_info_updated(success: bool, message: String) -> void:
 	print("Consent info updated: ", success, " / ", message)
-
+	
 	if not success:
 		push_warning("Consent info update failed: " + message)
 		# You can decide whether to initialize or block ads here.
 		# For strict compliance, fix the consent error first.
 		return
-
+	
 	match message:
 		"NotRequired":
 			print("Consent not required. Initializing Appodeal.")
@@ -116,7 +127,9 @@ func _on_consent_info_updated(success: bool, message: String) -> void:
 			print("Unknown consent status: ", message)
 			plugin.init(app_key, false, false)
 
-
+func _on_consent_flow_finished(success: bool, message: String) -> void:
+	print("Consent flow finished: ", success, " / ", message)
+	plugin.initialize(app_key, is_testing, auto_cache)
 func _on_consent_form_dismissed(success: bool, message: String) -> void:
 	print("Consent form dismissed: ", success, " / ", message)
 
